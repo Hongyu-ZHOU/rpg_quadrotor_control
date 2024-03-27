@@ -15,12 +15,16 @@ RPGRotorsInterface::RPGRotorsInterface(const ros::NodeHandle& nh,
     : nh_(nh),
       pnh_(pnh),
       interface_armed_(false),
+      odom_available_(false),
+      angular_accelerations_estimate_(),
       torques_and_thrust_estimate_(),
       control_command_() {
   loadParameters();
 
   rotors_desired_motor_speed_pub_ =
       nh_.advertise<mav_msgs::Actuators>("command/motor_speed", 1);
+  indi_torque_pub_ =
+      nh_.advertise<geometry_msgs::Vector3>("indi_torque", 1);
 
   rpg_control_command_sub_ =
       nh_.subscribe("control_command", 1,
@@ -108,7 +112,28 @@ void RPGRotorsInterface::lowLevelControlLoop(const ros::TimerEvent& time) {
 
 void RPGRotorsInterface::rotorsOdometryCallback(
     const nav_msgs::Odometry::ConstPtr& msg) {
+  if (!odom_available_) {
+    quad_state_last_ = quad_state_;
+    odom_available_ = true;
+  } else {
+    quad_state_last_ = quad_state_;
+  }
+
   quad_state_ = *msg;
+
+  if (!odom_available_) {
+    odom_time_ = ros::Time::now();
+    odom_time_last_ = odom_time_;
+    angular_accelerations_estimate_ = Eigen::Vector3d::Zero();
+  } else {
+    odom_time_ = ros::Time::now();
+    double dt = odom_time_.toSec() - odom_time_last_.toSec();
+    if (dt > 1e-4) {
+      odom_time_last_ = odom_time_;
+      angular_accelerations_estimate_ = (quadrotor_common::geometryToEigen(quad_state_.twist.twist.angular) 
+                                                      - quadrotor_common::geometryToEigen(quad_state_last_.twist.twist.angular)) / dt;
+    }
+  }
 }
 
 void RPGRotorsInterface::rpgControlCommandCallback(
@@ -157,6 +182,13 @@ TorquesAndThrust RPGRotorsInterface::bodyRateControl(
       K_lqr_ * control_error +
       body_rate_estimate.cross(inertia_ * body_rate_estimate) +
       inertia_ * rate_cmd.angular_accelerations;
+
+  // INDI
+  Eigen::Vector3d indi_body_torques = torques_and_thrust_estimate_.body_torques 
+                                        - inertia_ * angular_accelerations_estimate_;
+  torques_and_thrust.body_torques += indi_body_torques;
+  indi_torque_pub_.publish(quadrotor_common::eigenToGeometry(indi_body_torques));
+
   torques_and_thrust.collective_thrust = rate_cmd.collective_thrust;
 
   return torques_and_thrust;

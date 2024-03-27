@@ -48,6 +48,10 @@ class RPGRotorsInterface {
   void loadParameters();
 
   nav_msgs::Odometry quad_state_;
+  nav_msgs::Odometry quad_state_last_;
+
+  ros::Time odom_time_;
+  ros::Time odom_time_last_;
 
   ros::NodeHandle nh_;
   ros::NodeHandle pnh_;
@@ -55,6 +59,7 @@ class RPGRotorsInterface {
   ros::Timer low_level_control_loop_timer_;
 
   ros::Publisher rotors_desired_motor_speed_pub_;
+  ros::Publisher indi_torque_pub_;
 
   ros::Subscriber rotors_odometry_sub_;
   ros::Subscriber rpg_control_command_sub_;
@@ -62,9 +67,11 @@ class RPGRotorsInterface {
   ros::Subscriber arm_interface_sub_;
 
   bool interface_armed_;
+  bool odom_available_;
   TorquesAndThrust torques_and_thrust_estimate_;
   quadrotor_msgs::ControlCommand control_command_;
   mav_msgs::Actuators last_motor_speed_;
+  Eigen::Vector3d angular_accelerations_estimate_;
 
   // Parameters
   Eigen::Matrix3d inertia_;
